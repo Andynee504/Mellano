@@ -21,7 +21,7 @@ float deadzone = 0.80f;  // multiplicador** // zona morta em m/s2
 float sensX = 18.0f;     // ganho do eixo X
 float sensY = 18.0f;     // ganho do eixo Y
 
-bool invertX = false;
+bool invertX = true;
 bool invertY = false;
 
 // ===== GAMEPAD =====
@@ -44,6 +44,16 @@ bool btnX = false;
 unsigned long lastPrint = 0;
 const unsigned long printInterval = 100;  // ms
 
+// ===== MODO DE OPERACAO =====
+enum DeviceMode {
+  MODE_GAME,
+  MODE_CONFIG
+};
+
+DeviceMode currentMode = MODE_GAME;
+String commandBuffer = "";
+const unsigned long configHoldMs = 1200;
+
 // ----------------------------
 // Helpers/utils
 // ----------------------------
@@ -57,18 +67,6 @@ float applyDeadzone(float value, float dz) {
   if (value > -dz && value < dz) return 0.0f;
   return value;
 }
-/*
-int convertToAxis(float value, float sensitivity, bool invertAxis) {
-  float adjusted = applyDeadzone(value, deadzone);
-
-  if (invertAxis) {
-    adjusted *= -1.0f;
-  }
-
-  int mapped = (int)(adjusted * sensitivity);
-  return clampAxis(mapped);
-}
-*/
 
 int mapAxisToHID(float value, float sensitivity, bool invertAxis) {
   float adjusted = applyDeadzone(value, deadzone);
@@ -117,8 +115,116 @@ void calibrateCenter() {
   Serial.println("=================");
 }
 
+void printConfig() {
+  Serial.println("=== CONFIG ===");
+  Serial.print("centerX: ");
+  Serial.println(centerX, 3);
+  Serial.print("centerY: ");
+  Serial.println(centerY, 3);
+  Serial.print("deadzone: ");
+  Serial.println(deadzone, 3);
+  Serial.print("sensX: ");
+  Serial.println(sensX, 3);
+  Serial.print("sensY: ");
+  Serial.println(sensY, 3);
+  Serial.print("invertX: ");
+  Serial.println(invertX ? 1 : 0);
+  Serial.print("invertY: ");
+  Serial.println(invertY ? 1 : 0);
+  Serial.println("==============");
+}
+
+void detectBootMode() {
+  unsigned long start = millis();
+
+  while (millis() - start < configHoldMs) {
+    if (digitalRead(PEDAL_3_PIN) != LOW) {
+      currentMode = MODE_GAME;
+      return;
+    }
+    delay(10);
+  }
+
+  currentMode = MODE_CONFIG;
+}
+
+void applyConfigCommand(String cmd) {
+  cmd.trim();
+  if (cmd.length() == 0) return;
+
+  cmd.toUpperCase();
+
+  if (cmd == "CAL") {
+    calibrateCenter();
+    return;
+  }
+
+  if (cmd == "PRINT") {
+    printConfig();
+    return;
+  }
+
+  if (cmd == "SAVE") {
+    Serial.println("SAVE ainda nao implementado.");
+    return;
+  }
+
+  if (cmd.startsWith("SX=")) {
+    sensX = cmd.substring(3).toFloat();
+    Serial.print("sensX = ");
+    Serial.println(sensX, 3);
+    return;
+  }
+
+  if (cmd.startsWith("SY=")) {
+    sensY = cmd.substring(3).toFloat();
+    Serial.print("sensY = ");
+    Serial.println(sensY, 3);
+    return;
+  }
+
+  if (cmd.startsWith("DZ=")) {
+    deadzone = cmd.substring(3).toFloat();
+    Serial.print("deadzone = ");
+    Serial.println(deadzone, 3);
+    return;
+  }
+
+  if (cmd.startsWith("IX=")) {
+    invertX = (cmd.substring(3).toInt() != 0);
+    Serial.print("invertX = ");
+    Serial.println(invertX ? 1 : 0);
+    return;
+  }
+
+  if (cmd.startsWith("IY=")) {
+    invertY = (cmd.substring(3).toInt() != 0);
+    Serial.print("invertY = ");
+    Serial.println(invertY ? 1 : 0);
+    return;
+  }
+
+  Serial.print("Comando desconhecido: ");
+  Serial.println(cmd);
+}
+
+void handleConfigSerial() {
+  while (Serial.available()) {
+    char ch = (char)Serial.read();
+
+    if (ch == '\n' || ch == '\r') {
+      if (commandBuffer.length() > 0) {
+        applyConfigCommand(commandBuffer);
+        commandBuffer = "";
+      }
+    } else {
+      commandBuffer += ch;
+    }
+  }
+}
+
 void setupGamepad() {
-  BleGamepadConfiguration config; // ?????
+  BleGamepadConfiguration config;  // ?????
 
   config.setAutoReport(false);
   config.setControllerType(CONTROLLER_TYPE_GAMEPAD);
@@ -178,7 +284,86 @@ void readMPUAndMapAxesAndButtons() {
   }
 }
 
+void handleSerialCommands() {
+  handleConfigSerial();
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(300);
+
+  pinMode(PEDAL_1_PIN, INPUT_PULLUP);
+  pinMode(PEDAL_2_PIN, INPUT_PULLUP);
+  pinMode(PEDAL_3_PIN, INPUT_PULLUP);
+
+  detectBootMode();
+
+  Wire.begin(SDA_PIN, SCL_PIN);
+  delay(300);
+
+  if (!mpu.begin()) {
+    Serial.println("ERRO: MPU6050 nao encontrado.");
+    while (true) {
+      delay(50);
+    }
+  }
+
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+
+  Serial.println("MPU6050 iniciado.");
+  Serial.println("Comandos:");
+  Serial.println("  c = recalibrar centro");
+  Serial.println("  p = imprimir configuracao");
+
+  calibrateCenter();
+
+  if (currentMode == MODE_GAME) {
+    setupGamepad();
+    Serial.println("MODO: GAME");
+    Serial.println("BLE gamepad pronto.");
+    Serial.println("Pareie o dispositivo 'Mellano Proto' no celular.");
+  } else {
+    Serial.println("MODO: CONFIG");
+    Serial.println("Comandos disponiveis:");
+    Serial.println("  CAL");
+    Serial.println("  PRINT");
+    Serial.println("  SX=18.0");
+    Serial.println("  SY=18.0");
+    Serial.println("  DZ=0.80");
+    Serial.println("  IX=0 ou 1");
+    Serial.println("  IY=0 ou 1");
+  }
+}
+
+void loop() {
+  if (currentMode == MODE_GAME) {
+    readMPUAndMapAxesAndButtons();
+  } else {
+    handleSerialCommands();
+
+    if (millis() - lastPrint >= printInterval) {
+      lastPrint = millis();
+      readMPUAndMapAxesAndButtons();
+      printState();
+    }
+  }
+}
+
+/*
 void printState() {
+void loop() {
+  handleSerialCommands();
+  readMPUAndMapAxesAndButtons();
+
+  //
+  if (millis() - lastPrint >= printInterval) {
+    lastPrint = millis();
+    printState();
+  }
+  //
+}
   Serial.println("--- INPUT STATE ---");
 
   Serial.print("BLE: ");
@@ -224,49 +409,4 @@ void handleSerialCommands() {
     Serial.println("==============");
   }
 }
-
-void setup() {
-  Serial.begin(115200);
-  delay(300);
-
-  pinMode(PEDAL_1_PIN, INPUT_PULLUP);
-  pinMode(PEDAL_2_PIN, INPUT_PULLUP);
-  pinMode(PEDAL_3_PIN, INPUT_PULLUP);
-
-  Wire.begin(SDA_PIN, SCL_PIN);
-  delay(300);
-
-  if (!mpu.begin()) {
-    Serial.println("ERRO: MPU6050 nao encontrado.");
-    while (true) {
-      delay(50);
-    }
-  }
-
-  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-
-  Serial.println("MPU6050 iniciado.");
-  Serial.println("Comandos:");
-  Serial.println("  c = recalibrar centro");
-  Serial.println("  p = imprimir configuracao");
-
-  calibrateCenter();
-  setupGamepad();
-
-  Serial.println("BLE gamepad pronto.");
-  Serial.println("Pareie o dispositivo 'Mellano Proto' no celular.");
-}
-
-void loop() {
-  handleSerialCommands();
-
-  readMPUAndMapAxesAndButtons();
-  /*
-  if (millis() - lastPrint >= printInterval) {
-    lastPrint = millis();
-    printState();
-  }
-  */
-}
+*/

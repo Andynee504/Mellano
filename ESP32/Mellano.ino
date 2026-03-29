@@ -1,31 +1,41 @@
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
+#include <BleGamepad.h>
+#include <Preferences.h>
 
 Adafruit_MPU6050 mpu;
+Preferences preferences;
 
 // ===== PINOS =====
 const int SDA_PIN = 22;
 const int SCL_PIN = 21;
 
-const int PEDAL_1_PIN = 18;  // A
-const int PEDAL_2_PIN = 19;  // B
-const int PEDAL_3_PIN = 23;  // reset/start
+const int PEDAL_1_PIN = 18; // A
+const int PEDAL_2_PIN = 19; // B
+const int PEDAL_3_PIN = 23;  // segurar no boot = modo config
 
 // ===== CONFIGURACAO =====
 float centerX = 0.0f;
 float centerY = 0.0f;
 
-float deadzone = 0.80f;  // multiplicador** // zona morta em m/s2
-float sensX = 18.0f;     // ganho do eixo X
-float sensY = 18.0f;     // ganho do eixo Y
+float deadzone = 0.80f;
+float sensX = 18.0f;
+float sensY = 18.0f;
 
-bool invertX = false;
+bool invertX = true; // face pra cima olhando pra frente
 bool invertY = false;
 
+// ===== GAMEPAD =====
+BleGamepad bleGamepad("Mellano Proto", "PUCSP", 100);
+
+// ===== FAIXA HID =====
+const int HID_MIN = 0;
+const int HID_MAX = 32767;
+
 // ===== SAIDA LOGICA FINAL =====
-int axisX = 0;  // -127 a 127
-int axisY = 0;  // -127 a 127
+int axisX = 0;
+int axisY = 0;
 
 bool btnA = false;
 bool btnB = false;
@@ -33,14 +43,24 @@ bool btnX = false;
 
 // ===== CONTROLE =====
 unsigned long lastPrint = 0;
-const unsigned long printInterval = 100;  // ms
+const unsigned long printInterval = 150;
 
-// ----------------------------
-// Helpers/utils
-// ----------------------------
-int clampAxis(int value) {
-  if (value > 127) return 127;
-  if (value < -127) return -127;
+// ===== MODO DE OPERACAO =====
+enum DeviceMode {
+  MODE_GAME,
+  MODE_CONFIG
+};
+
+DeviceMode currentMode = MODE_GAME;
+String commandBuffer = "";
+const unsigned long configHoldMs = 1200;
+
+// =========================================================
+// Helpers
+// =========================================================
+int clampInt(int value, int minValue, int maxValue) {
+  if (value < minValue) return minValue;
+  if (value > maxValue) return maxValue;
   return value;
 }
 
@@ -49,17 +69,64 @@ float applyDeadzone(float value, float dz) {
   return value;
 }
 
-int convertToAxis(float value, float sensitivity, bool invertAxis) {
+int mapAxisToHID(float value, float sensitivity, bool invertAxis) {
   float adjusted = applyDeadzone(value, deadzone);
 
   if (invertAxis) {
     adjusted *= -1.0f;
   }
 
-  int mapped = (int)(adjusted * sensitivity);
-  return clampAxis(mapped);
+  int signedValue = (int)(adjusted * sensitivity);
+  signedValue = clampInt(signedValue, -127, 127);
+
+  long hidValue = map(signedValue, -127, 127, HID_MIN, HID_MAX);
+  return clampInt((int)hidValue, HID_MIN, HID_MAX);
 }
 
+// =========================================================
+// Persistencia
+// =========================================================
+bool loadConfig() {
+  preferences.begin("mellano", true);
+
+  uint8_t saved = preferences.getUChar("saved", 0);
+  if (saved == 0) {
+    preferences.end();
+    return false;
+  }
+
+  centerX = preferences.getFloat("centerX", 0.0f);
+  centerY = preferences.getFloat("centerY", 0.0f);
+  deadzone = preferences.getFloat("deadzone", 0.80f);
+  sensX = preferences.getFloat("sensX", 18.0f);
+  sensY = preferences.getFloat("sensY", 18.0f);
+  invertX = preferences.getUChar("invertX", 1) != 0;
+  invertY = preferences.getUChar("invertY", 0) != 0;
+
+  preferences.end();
+  return true;
+}
+
+void saveConfig() {
+  preferences.begin("mellano", false);
+
+  preferences.putUChar("saved", 1);
+  preferences.putFloat("centerX", centerX);
+  preferences.putFloat("centerY", centerY);
+  preferences.putFloat("deadzone", deadzone);
+  preferences.putFloat("sensX", sensX);
+  preferences.putFloat("sensY", sensY);
+  preferences.putUChar("invertX", invertX ? 1 : 0);
+  preferences.putUChar("invertY", invertY ? 1 : 0);
+
+  preferences.end();
+
+  Serial.println("CONFIG SALVA.");
+}
+
+// =========================================================
+// Sensor / botoes
+// =========================================================
 void calibrateCenter() {
   sensors_event_t a, g, temp;
 
@@ -68,6 +135,7 @@ void calibrateCenter() {
   const int samples = 30;
 
   Serial.println("=== CALIBRANDO ===");
+
   for (int i = 0; i < samples; i++) {
     mpu.getEvent(&a, &g, &temp);
     sumX += a.acceleration.x;
@@ -86,66 +154,239 @@ void calibrateCenter() {
   Serial.println("=================");
 }
 
-void readButtons() {
-  btnA = (digitalRead(PEDAL_1_PIN) == LOW);
-  btnB = (digitalRead(PEDAL_2_PIN) == LOW);
-  btnX = (digitalRead(PEDAL_3_PIN) == LOW);
-}
-
-void readMPUAndMapAxes() {
+void readInputs() {
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
 
   float relativeX = a.acceleration.x - centerX;
   float relativeY = a.acceleration.y - centerY;
 
-  axisX = convertToAxis(relativeX, sensX, invertX);
-  axisY = convertToAxis(relativeY, sensY, invertY);
+  axisX = mapAxisToHID(relativeX, sensX, invertX);
+  axisY = mapAxisToHID(relativeY, sensY, invertY);
+
+  btnA = (digitalRead(PEDAL_1_PIN) == LOW);
+  btnB = (digitalRead(PEDAL_2_PIN) == LOW);
+  btnX = (digitalRead(PEDAL_3_PIN) == LOW);
 }
 
 void printState() {
   Serial.println("--- INPUT STATE ---");
   Serial.print("axisX: ");
   Serial.println(axisX);
-
   Serial.print("axisY: ");
   Serial.println(axisY);
-
   Serial.print("btnA: ");
   Serial.println(btnA ? 1 : 0);
-
   Serial.print("btnB: ");
   Serial.println(btnB ? 1 : 0);
-
   Serial.print("btnX: ");
   Serial.println(btnX ? 1 : 0);
-
   Serial.println("-------------------");
 }
 
-void handleSerialCommands() {
-  if (!Serial.available()) return;
+void printConfig() {
+  Serial.println("=== CONFIG ===");
+  Serial.print("centerX: ");
+  Serial.println(centerX, 3);
+  Serial.print("centerY: ");
+  Serial.println(centerY, 3);
+  Serial.print("deadzone: ");
+  Serial.println(deadzone, 3);
+  Serial.print("sensX: ");
+  Serial.println(sensX, 3);
+  Serial.print("sensY: ");
+  Serial.println(sensY, 3);
+  Serial.print("invertX: ");
+  Serial.println(invertX ? 1 : 0);
+  Serial.print("invertY: ");
+  Serial.println(invertY ? 1 : 0);
+  Serial.println("==============");
+}
 
-  char cmd = Serial.read();
+// =========================================================
+// Modo boot
+// =========================================================
+void detectBootMode() {
+  unsigned long start = millis();
 
-  if (cmd == 'c' || cmd == 'C') {
+  while (millis() - start < configHoldMs) {
+    if (digitalRead(PEDAL_3_PIN) != LOW) {
+      currentMode = MODE_GAME;
+      return;
+    }
+    delay(10);
+  }
+
+  currentMode = MODE_CONFIG;
+}
+
+// =========================================================
+// Gamepad
+// =========================================================
+void setupGamepad() {
+  BleGamepadConfiguration config;
+
+  config.setAutoReport(false);
+  config.setControllerType(CONTROLLER_TYPE_GAMEPAD);
+  config.setButtonCount(3);
+  config.setHatSwitchCount(0);
+
+  config.setWhichAxes(true, true, false, false, false, false, false, false);
+
+  config.setAxesMin(HID_MIN);
+  config.setAxesMax(HID_MAX);
+
+  config.setIncludeStart(false);
+  config.setIncludeSelect(false);
+  config.setIncludeMenu(false);
+  config.setIncludeHome(false);
+  config.setIncludeBack(false);
+  config.setIncludeVolumeInc(false);
+  config.setIncludeVolumeDec(false);
+  config.setIncludeVolumeMute(false);
+
+  bleGamepad.begin(&config);
+}
+
+void sendGamepadReport() {
+  if (!bleGamepad.isConnected()) return;
+
+  bleGamepad.setX(axisX);
+  bleGamepad.setY(axisY);
+
+  if (btnA) bleGamepad.press(BUTTON_1);
+  else bleGamepad.release(BUTTON_1);
+
+  if (btnB) bleGamepad.press(BUTTON_2);
+  else bleGamepad.release(BUTTON_2);
+
+  if (btnX) bleGamepad.press(BUTTON_3);
+  else bleGamepad.release(BUTTON_3);
+
+  bleGamepad.sendReport();
+}
+
+// =========================================================
+// Parser de comandos de configuracao
+// =========================================================
+void printHelp() {
+  Serial.println("=== COMANDOS ===");
+  Serial.println("HELP");
+  Serial.println("PRINT");
+  Serial.println("CAL");
+  Serial.println("SX=18.0");
+  Serial.println("SY=18.0");
+  Serial.println("DZ=0.80");
+  Serial.println("IX=0 ou 1");
+  Serial.println("IY=0 ou 1");
+  Serial.println("SAVE");
+  Serial.println("LOAD");
+  Serial.println("REBOOT");
+  Serial.println("GAME");
+  Serial.println("================");
+}
+
+void applyConfigCommand(String rawCmd) {
+  rawCmd.trim();
+  if (rawCmd.length() == 0) return;
+
+  String upperCmd = rawCmd;
+  upperCmd.toUpperCase();
+
+  if (upperCmd == "HELP") {
+    printHelp();
+    return;
+  }
+
+  if (upperCmd == "PRINT") {
+    printConfig();
+    return;
+  }
+
+  if (upperCmd == "CAL") {
     calibrateCenter();
-  } else if (cmd == 'p' || cmd == 'P') {
-    Serial.println("=== CONFIG ===");
-    Serial.print("deadzone: ");
-    Serial.println(deadzone, 3);
-    Serial.print("sensX: ");
+    return;
+  }
+
+  if (upperCmd == "SAVE") {
+    saveConfig();
+    return;
+  }
+
+  if (upperCmd == "LOAD") {
+    if (loadConfig()) {
+      Serial.println("CONFIG CARREGADA.");
+      printConfig();
+    } else {
+      Serial.println("Nenhuma config salva encontrada.");
+    }
+    return;
+  }
+
+  if (upperCmd == "REBOOT" || upperCmd == "GAME") {
+    Serial.println("Reiniciando...");
+    delay(150);
+    ESP.restart();
+    return;
+  }
+
+  if (upperCmd.startsWith("SX=")) {
+    sensX = rawCmd.substring(3).toFloat();
+    Serial.print("sensX = ");
     Serial.println(sensX, 3);
-    Serial.print("sensY: ");
+    return;
+  }
+
+  if (upperCmd.startsWith("SY=")) {
+    sensY = rawCmd.substring(3).toFloat();
+    Serial.print("sensY = ");
     Serial.println(sensY, 3);
-    Serial.print("invertX: ");
+    return;
+  }
+
+  if (upperCmd.startsWith("DZ=")) {
+    deadzone = rawCmd.substring(3).toFloat();
+    Serial.print("deadzone = ");
+    Serial.println(deadzone, 3);
+    return;
+  }
+
+  if (upperCmd.startsWith("IX=")) {
+    invertX = (rawCmd.substring(3).toInt() != 0);
+    Serial.print("invertX = ");
     Serial.println(invertX ? 1 : 0);
-    Serial.print("invertY: ");
+    return;
+  }
+
+  if (upperCmd.startsWith("IY=")) {
+    invertY = (rawCmd.substring(3).toInt() != 0);
+    Serial.print("invertY = ");
     Serial.println(invertY ? 1 : 0);
-    Serial.println("==============");
+    return;
+  }
+
+  Serial.print("Comando desconhecido: ");
+  Serial.println(rawCmd);
+}
+
+void handleConfigSerial() {
+  while (Serial.available()) {
+    char ch = (char)Serial.read();
+
+    if (ch == '\n' || ch == '\r') {
+      if (commandBuffer.length() > 0) {
+        applyConfigCommand(commandBuffer);
+        commandBuffer = "";
+      }
+    } else {
+      commandBuffer += ch;
+    }
   }
 }
 
+// =========================================================
+// Setup / Loop
+// =========================================================
 void setup() {
   Serial.begin(115200);
   delay(300);
@@ -153,6 +394,8 @@ void setup() {
   pinMode(PEDAL_1_PIN, INPUT_PULLUP);
   pinMode(PEDAL_2_PIN, INPUT_PULLUP);
   pinMode(PEDAL_3_PIN, INPUT_PULLUP);
+
+  detectBootMode();
 
   Wire.begin(SDA_PIN, SCL_PIN);
   delay(300);
@@ -169,21 +412,39 @@ void setup() {
   mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 
   Serial.println("MPU6050 iniciado.");
-  Serial.println("Comandos:");
-  Serial.println("  c = recalibrar centro");
-  Serial.println("  p = imprimir configuracao");
 
-  calibrateCenter();
+  bool loaded = loadConfig();
+
+  if (loaded) {
+    Serial.println("CONFIG SALVA CARREGADA.");
+    printConfig();
+  } else {
+    Serial.println("Nenhuma config salva. Fazendo calibracao inicial.");
+    calibrateCenter();
+  }
+
+  if (currentMode == MODE_GAME) {
+    setupGamepad();
+    Serial.println("MODO: GAME");
+    Serial.println("BLE gamepad pronto.");
+    Serial.println("Pareie o dispositivo 'Mellano Proto' no celular.");
+  } else {
+    Serial.println("MODO: CONFIG");
+    printHelp();
+  }
 }
 
 void loop() {
-  handleSerialCommands();
+  if (currentMode == MODE_GAME) {
+    readInputs();
+    sendGamepadReport();
+  } else {
+    handleConfigSerial();
 
-  readButtons();
-  readMPUAndMapAxes();
-
-  if (millis() - lastPrint >= printInterval) {
-    lastPrint = millis();
-    printState();
+    if (millis() - lastPrint >= printInterval) {
+      lastPrint = millis();
+      readInputs();
+      printState();
+    }
   }
 }
