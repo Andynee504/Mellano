@@ -1,0 +1,137 @@
+using System;
+using UnityEngine;
+
+public class DeviceConfigService : MonoBehaviour
+{
+    public bool IsConnected { get; private set; }
+    public string LastDeviceAddress { get; private set; }
+    public string LastStatus { get; private set; } = "Idle";
+
+    public float SensX { get; private set; } = 18f;
+    public float SensY { get; private set; } = 18f;
+    public float Deadzone { get; private set; } = 0.80f;
+    public bool InvertX { get; private set; } = true;
+    public bool InvertY { get; private set; } = false;
+
+    public event Action<bool> ConnectionChanged;
+    public event Action ConfigChanged;
+    public event Action<string> StatusChanged;
+    public event Action<string, string> DeviceFound;
+
+    private BleBridge bleBridge;
+
+    private void Awake()
+    {
+        bleBridge = new BleBridge();
+    }
+
+    public string ConnectionStatusLabel =>
+        IsConnected ? "Dispositivo conectado" : "Dispositivo não conectado";
+
+    public void RequestPermissions()
+    {
+        BlePermissionHelper.RequestAll();
+    }
+
+    public void StartScan()
+    {
+        LastStatus = "Escaneando...";
+        StatusChanged?.Invoke(LastStatus);
+        bleBridge.StartScan();
+    }
+
+    public void StopScan()
+    {
+        bleBridge.StopScan();
+        LastStatus = "Scan parado";
+        StatusChanged?.Invoke(LastStatus);
+    }
+
+    public void ConnectToAddress(string address)
+    {
+        LastDeviceAddress = address;
+        bleBridge.ConnectToAddress(address);
+    }
+
+    public void Disconnect()
+    {
+        bleBridge.Disconnect();
+    }
+
+    public void SetSensX(float value)
+    {
+        SensX = value;
+        SendCommand($"SX={value:F2}");
+        ConfigChanged?.Invoke();
+    }
+
+    public void SetSensY(float value)
+    {
+        SensY = value;
+        SendCommand($"SY={value:F2}");
+        ConfigChanged?.Invoke();
+    }
+
+    public void SetDeadzone(float value)
+    {
+        Deadzone = value;
+        SendCommand($"DZ={value:F2}");
+        ConfigChanged?.Invoke();
+    }
+
+    public void SetInvertX(bool value)
+    {
+        InvertX = value;
+        SendCommand($"IX={(value ? 1 : 0)}");
+        ConfigChanged?.Invoke();
+    }
+
+    public void SetInvertY(bool value)
+    {
+        InvertY = value;
+        SendCommand($"IY={(value ? 1 : 0)}");
+        ConfigChanged?.Invoke();
+    }
+
+    public void CalibrateCenter() => SendCommand("CAL");
+    public void Save() => SendCommand("SAVE");
+
+    public void SaveAndReboot()
+    {
+        SendCommand("SAVE");
+        SendCommand("REBOOT");
+    }
+
+    public void SendCommand(string command)
+    {
+        bleBridge.WriteCommand(command);
+        LastStatus = "CMD: " + command;
+        StatusChanged?.Invoke(LastStatus);
+    }
+
+    // ===== Callbacks vindos do Java via UnitySendMessage =====
+
+    public void OnBleDeviceFound(string payload)
+    {
+        var parts = payload.Split('|');
+        if (parts.Length < 2) return;
+
+        DeviceFound?.Invoke(parts[0], parts[1]);
+        LastStatus = "Encontrado: " + parts[0];
+        StatusChanged?.Invoke(LastStatus);
+    }
+
+    public void OnBleStatus(string status)
+    {
+        LastStatus = status;
+        StatusChanged?.Invoke(LastStatus);
+    }
+
+    public void OnBleConnectionChanged(string state)
+    {
+        IsConnected = state == "CONNECTED";
+        ConnectionChanged?.Invoke(IsConnected);
+        LastStatus = state;
+        StatusChanged?.Invoke(LastStatus);
+    }
+}
