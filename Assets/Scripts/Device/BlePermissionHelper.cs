@@ -1,24 +1,64 @@
+using System;
 using UnityEngine;
 using UnityEngine.Android;
 
 public static class BlePermissionHelper
 {
-    private const string BluetoothScan = "android.permission.BLUETOOTH_SCAN";
-    private const string BluetoothConnect = "android.permission.BLUETOOTH_CONNECT";
-    private const string FineLocation = "android.permission.ACCESS_FINE_LOCATION";
-
-    public static void RequestAll()
+    public static void RequestBlePermissions(Action onGranted, Action<string, bool> onDenied = null)
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
-        RequestIfNeeded(BluetoothScan);
-        RequestIfNeeded(BluetoothConnect);
-        RequestIfNeeded(FineLocation);
+        string[] permissions =
+        {
+            "android.permission.BLUETOOTH_SCAN",
+            "android.permission.BLUETOOTH_CONNECT"
+        };
+
+        RequestNextPermission(permissions, 0, onGranted, onDenied);
+#else
+        onGranted?.Invoke();
 #endif
     }
 
-    private static void RequestIfNeeded(string permission)
+    private static void RequestNextPermission(string[] permissions, int index, Action onGranted, Action<string, bool> onDenied)
     {
-        if (!Permission.HasUserAuthorizedPermission(permission))
-            Permission.RequestUserPermission(permission);
+        if (index >= permissions.Length)
+        {
+            onGranted?.Invoke();
+            return;
+        }
+
+        string permission = permissions[index];
+
+        if (Permission.HasUserAuthorizedPermission(permission))
+        {
+            RequestNextPermission(permissions, index + 1, onGranted, onDenied);
+            return;
+        }
+
+        var callbacks = new PermissionCallbacks();
+
+        callbacks.PermissionGranted += grantedPermission =>
+        {
+            if (grantedPermission == permission)
+                RequestNextPermission(permissions, index + 1, onGranted, onDenied);
+        };
+
+        callbacks.PermissionDenied += deniedPermission =>
+        {
+            if (deniedPermission != permission) return;
+
+            bool canAskAgain = Permission.ShouldShowRequestPermissionRationale(permission);
+            onDenied?.Invoke(permission, canAskAgain);
+        };
+
+        callbacks.PermissionRequestDismissed += dismissedPermission =>
+        {
+            if (dismissedPermission != permission) return;
+
+            bool canAskAgain = Permission.ShouldShowRequestPermissionRationale(permission);
+            onDenied?.Invoke(permission, canAskAgain);
+        };
+
+        Permission.RequestUserPermission(permission, callbacks);
     }
 }

@@ -442,13 +442,11 @@ void setupConfigBle() {
 
   configWriteChar = configService->createCharacteristic(
     CONFIG_WRITE_UUID,
-    NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
-  );
+    NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
 
   configNotifyChar = configService->createCharacteristic(
     CONFIG_NOTIFY_UUID,
-    NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ
-  );
+    NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ);
 
   configWriteChar->setCallbacks(new ConfigWriteCallbacks());
   configNotifyChar->setValue("READY");
@@ -456,16 +454,8 @@ void setupConfigBle() {
   configService->start();
 
   NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
-
-  NimBLEAdvertisementData advData;
-  advData.setFlags(0x06);
-  advData.addServiceUUID(CONFIG_SERVICE_UUID);
-
-  NimBLEAdvertisementData scanResp;
-  scanResp.setName(CONFIG_DEVICE_NAME);
-
-  advertising->setAdvertisementData(advData);
-  advertising->setScanResponseData(scanResp);
+  advertising->addServiceUUID(CONFIG_SERVICE_UUID);
+  advertising->setName(CONFIG_DEVICE_NAME);
   advertising->start();
 
   Serial.println("BLE CONFIG pronto.");

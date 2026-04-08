@@ -49,22 +49,45 @@ public class HomeScreen : UIScreen
 
     public void OnPressLinkDevice()
     {
-        Debug.Log("RequestPermissions chamado");
-        if (deviceConfigService == null)
-            return;
+        Debug.Log("[HomeScreen] OnPressLinkDevice chamado");
 
-        if (deviceConfigService.IsConnected)
+        if (deviceConfigService == null)
         {
-            deviceConfigService.Disconnect();
+            Debug.Log("[HomeScreen] deviceConfigService == null");
             return;
         }
 
-        deviceConfigService.RequestPermissions();
-        deviceConfigService.StartScan();
+        if (deviceConfigService.IsConnected)
+        {
+            Debug.Log("[HomeScreen] Já conectado, desconectando");
+            deviceConfigService.Disconnect();
+            return;
+        }
+        
+        if (deviceConfigService.IsScanning)
+        {
+            Debug.Log("[HomeScreen] Scan já em andamento");
+            return;
+        }
+
+        Debug.Log("[HomeScreen] Pedindo permissões");
+
+        deviceConfigService.RequestPermissions(
+            onGranted: () =>
+            {
+                Debug.Log("[HomeScreen] Permissões concedidas, iniciando scan");
+                deviceConfigService.StartScan();
+            },
+            onDenied: (permission, canAskAgain) =>
+            {
+                Debug.LogWarning(canAskAgain ? $"[HomeScreen] Permissão negada: {permission}" : $"[HomeScreen] Permissão negada permanentemente: {permission}");
+            }
+        );
     }
 
     private void HandleDeviceFound(string deviceName, string address)
     {
+        Debug.Log($"[HomeScreen] Dispositivo encontrado: {deviceName} | {address}");
         if (deviceConfigService == null)
             return;
 

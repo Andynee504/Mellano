@@ -4,6 +4,7 @@ using UnityEngine;
 public class DeviceConfigService : MonoBehaviour
 {
     public bool IsConnected { get; private set; }
+    public bool IsScanning { get; private set; }
     public string LastDeviceAddress { get; private set; }
     public string LastStatus { get; private set; } = "Idle";
 
@@ -28,13 +29,18 @@ public class DeviceConfigService : MonoBehaviour
     public string ConnectionStatusLabel =>
         IsConnected ? "Dispositivo conectado" : "Dispositivo não conectado";
 
-    public void RequestPermissions()
+    public void RequestPermissions(System.Action onGranted, System.Action<string, bool> onDenied = null)
     {
-        BlePermissionHelper.RequestAll();
+        Debug.Log("[DeviceConfigService] RequestPermissions");
+
+        BlePermissionHelper.RequestBlePermissions(onGranted: onGranted, onDenied: onDenied);
     }
 
     public void StartScan()
     {
+        Debug.Log("[DeviceConfigService] StartScan");
+        isConnecting = false;
+        IsScanning = true;
         LastStatus = "Escaneando...";
         StatusChanged?.Invoke(LastStatus);
         bleBridge.StartScan();
@@ -42,6 +48,8 @@ public class DeviceConfigService : MonoBehaviour
 
     public void StopScan()
     {
+        Debug.Log("[DeviceConfigService] StopScan");
+        IsScanning = false;
         bleBridge.StopScan();
         LastStatus = "Scan parado";
         StatusChanged?.Invoke(LastStatus);
@@ -49,6 +57,7 @@ public class DeviceConfigService : MonoBehaviour
 
     public void ConnectToAddress(string address)
     {
+        Debug.Log("[DeviceConfigService] ConnectToAddress -> " + address);
         LastDeviceAddress = address;
         bleBridge.ConnectToAddress(address);
     }
@@ -111,8 +120,10 @@ public class DeviceConfigService : MonoBehaviour
 
     // ===== Callbacks vindos do Java via UnitySendMessage =====
 
+    /*
     public void OnBleDeviceFound(string payload)
     {
+        Debug.Log("[DeviceConfigService] OnBleDeviceFound -> " + payload);
         var parts = payload.Split('|');
         if (parts.Length < 2) return;
 
@@ -120,18 +131,59 @@ public class DeviceConfigService : MonoBehaviour
         LastStatus = "Encontrado: " + parts[0];
         StatusChanged?.Invoke(LastStatus);
     }
+    */
+    private bool isConnecting;
+
+    public void OnBleDeviceFound(string payload)
+    {
+        Debug.Log("[DeviceConfigService] OnBleDeviceFound -> " + payload);
+
+        if (isConnecting)
+            return;
+
+        var parts = payload.Split('|');
+        if (parts.Length < 2) return;
+
+        isConnecting = true;
+        IsScanning = false;
+        DeviceFound?.Invoke(parts[0], parts[1]);
+        LastStatus = "Encontrado: " + parts[0];
+        StatusChanged?.Invoke(LastStatus);
+    }
+    // TESTE
 
     public void OnBleStatus(string status)
     {
+        Debug.Log("[DeviceConfigService] OnBleStatus -> " + status);
         LastStatus = status;
         StatusChanged?.Invoke(LastStatus);
     }
 
+    /*
     public void OnBleConnectionChanged(string state)
     {
+        Debug.Log("[DeviceConfigService] OnBleConnectionChanged -> " + state);
         IsConnected = state == "CONNECTED";
         ConnectionChanged?.Invoke(IsConnected);
         LastStatus = state;
         StatusChanged?.Invoke(LastStatus);
     }
+    */
+    public void OnBleConnectionChanged(string state)
+    {
+        Debug.Log("[DeviceConfigService] OnBleConnectionChanged -> " + state);
+
+        IsConnected = state == "CONNECTED";
+
+        if (state == "CONNECTED" || state == "DISCONNECTED")
+        {
+            isConnecting = false;
+            IsScanning = false;
+        }
+
+        ConnectionChanged?.Invoke(IsConnected);
+        LastStatus = state;
+        StatusChanged?.Invoke(LastStatus);
+    }
+    // TESTE
 }
