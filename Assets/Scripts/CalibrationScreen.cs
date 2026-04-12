@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UISwitchControl = UISwitcher.UISwitcher;
 
 public class CalibrationScreen : UIScreen
 {
@@ -21,8 +22,8 @@ public class CalibrationScreen : UIScreen
     [SerializeField] private TMP_Text deadzoneValueText;
 
     [Header("Toggles")]
-    [SerializeField] private Toggle invertXToggle;
-    [SerializeField] private Toggle invertYToggle;
+    [SerializeField] private UISwitchControl invertXToggle;
+    [SerializeField] private UISwitchControl invertYToggle;
 
     [Header("Buttons")]
     [SerializeField] private Button calibrateCenterButton;
@@ -139,10 +140,10 @@ public class CalibrationScreen : UIScreen
             deadzoneSlider.SetValueWithoutNotify(deviceConfigService.Deadzone);
 
         if (invertXToggle != null)
-            invertXToggle.SetIsOnWithoutNotify(deviceConfigService.InvertX);
+            invertXToggle.SetWithoutNotify(deviceConfigService.InvertX);
 
         if (invertYToggle != null)
-            invertYToggle.SetIsOnWithoutNotify(deviceConfigService.InvertY);
+            invertYToggle.SetWithoutNotify(deviceConfigService.InvertY);
 
         UpdateSensXLabel();
         UpdateSensYLabel();

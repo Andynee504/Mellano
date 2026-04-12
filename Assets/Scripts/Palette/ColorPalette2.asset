@@ -10,20 +10,20 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 52749354a7999dd40ae314bf81fd749f, type: 3}
-  m_Name: ColorPalette1
+  m_Name: ColorPalette2
   m_EditorClassIdentifier: Assembly-CSharp::ColorPalette
   entries:
   - id: Primary
-    color: {r: 0.011764706, g: 0.3254902, b: 0.4, a: 1}
+    color: {r: 0.25882354, g: 0.4627451, b: 0.4627451, a: 1}
   - id: Secondary
-    color: {r: 0.38039216, g: 0.7294118, b: 0.62352943, a: 1}
+    color: {r: 0.24705882, g: 0.6039216, b: 0.50980395, a: 1}
   - id: Accent
-    color: {r: 0.011764706, g: 0.1882353, b: 0.25882354, a: 1}
+    color: {r: 0.6313726, g: 0.8039216, b: 0.4509804, a: 1}
   - id: Fill
-    color: {r: 0, g: 0, b: 0, a: 1}
+    color: {r: 0.23137255, g: 0.34901962, b: 0.41568628, a: 1}
   - id: Background1
-    color: {r: 1, g: 1, b: 1, a: 1}
+    color: {r: 0.9254902, g: 0.85882354, b: 0.3764706, a: 1}
   - id: Background2
-    color: {r: 0.011764706, g: 0.1882353, b: 0.25882354, a: 1}
+    color: {r: 0.23137255, g: 0.34901962, b: 0.41568628, a: 1}
   - id: Text1
     color: {r: 1, g: 1, b: 1, a: 1}
