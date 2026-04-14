@@ -1,5 +1,6 @@
 using UnityEditor;
 using UnityEngine;
+using Unity.VectorGraphics;
 
 public class PaletteToolsEditor : EditorWindow
 {
@@ -47,6 +48,9 @@ public class PaletteToolsEditor : EditorWindow
             if (binder.imageTarget != null)
                 Undo.RecordObject(binder.imageTarget, "Apply Palette");
 
+            if (binder.svgImageTarget != null)
+                Undo.RecordObject(binder.svgImageTarget, "Apply Palette");
+
             if (binder.tmpTextTarget != null)
                 Undo.RecordObject(binder.tmpTextTarget, "Apply Palette");
 
@@ -62,6 +66,9 @@ public class PaletteToolsEditor : EditorWindow
 
             if (binder.imageTarget != null)
                 EditorUtility.SetDirty(binder.imageTarget);
+
+            if (binder.svgImageTarget != null)
+                EditorUtility.SetDirty(binder.svgImageTarget);
 
             if (binder.tmpTextTarget != null)
                 EditorUtility.SetDirty(binder.tmpTextTarget);

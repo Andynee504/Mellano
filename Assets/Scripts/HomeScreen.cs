@@ -122,7 +122,7 @@ public class HomeScreen : UIScreen
             connectionStatusText.text = deviceConfigService.ConnectionStatusLabel;
 
         if (linkDeviceButtonText != null)
-            linkDeviceButtonText.text = connected ? "Desconectar dispositivo" : "Conectar dispositivo";
+            linkDeviceButtonText.text = connected ? "Desconectar Dispositivo" : "Conectar Dispositivo";
 
         if (calibrateButton != null)
             calibrateButton.interactable = connected;

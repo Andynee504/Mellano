@@ -253,9 +253,22 @@ public class DeviceConfigService : MonoBehaviour
         if (string.IsNullOrWhiteSpace(payload))
             return;
 
+        if (payload.StartsWith("FW:", StringComparison.OrdinalIgnoreCase))
+        {
+            FirmwareVersion = payload.Substring(3);
+            DeviceInfoChanged?.Invoke();
+            return;
+        }
+
         if (payload.StartsWith("INFO:", StringComparison.OrdinalIgnoreCase))
         {
             ParseInfoPayload(payload.Substring(5));
+            return;
+        }
+
+        if (payload.StartsWith("I:", StringComparison.OrdinalIgnoreCase))
+        {
+            ParseCompactInputPayload(payload.Substring(2));
             return;
         }
 
@@ -337,6 +350,28 @@ public class DeviceConfigService : MonoBehaviour
         TelemetryButton1 = parts[2] == "1";
         TelemetryButton2 = parts[3] == "1";
         TelemetryButton3 = parts[4] == "1";
+
+        TelemetryChanged?.Invoke();
+    }
+
+    private void ParseCompactInputPayload(string rawPayload)
+    {
+        string[] parts = rawPayload.Split('|');
+        if (parts.Length < 3)
+            return;
+
+        if (int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int accelX10))
+            TelemetryAccelX = accelX10 / 10f;
+
+        if (int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int accelY10))
+            TelemetryAccelY = accelY10 / 10f;
+
+        if (int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int buttons))
+        {
+            TelemetryButton1 = (buttons & 1) != 0;
+            TelemetryButton2 = (buttons & 2) != 0;
+            TelemetryButton3 = (buttons & 4) != 0;
+        }
 
         TelemetryChanged?.Invoke();
     }

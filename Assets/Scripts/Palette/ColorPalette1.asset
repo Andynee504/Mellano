@@ -27,3 +27,5 @@ MonoBehaviour:
     color: {r: 0.011764706, g: 0.1882353, b: 0.25882354, a: 1}
   - id: Text1
     color: {r: 1, g: 1, b: 1, a: 1}
+  - id: Text2
+    color: {r: 0.011764706, g: 0.1882353, b: 0.25882354, a: 1}

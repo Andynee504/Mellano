@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.VectorGraphics;
 
 [ExecuteAlways]
 public class PaletteColorBinder : MonoBehaviour
@@ -11,6 +12,7 @@ public class PaletteColorBinder : MonoBehaviour
     [Header("Targets")]
     public SpriteRenderer spriteRendererTarget;
     public Image imageTarget;
+    public SVGImage svgImageTarget;
     public TMP_Text tmpTextTarget;
     public Renderer rendererTarget;
 
@@ -30,6 +32,9 @@ public class PaletteColorBinder : MonoBehaviour
 
         if (imageTarget != null)
             imageTarget.color = color;
+
+        if (svgImageTarget != null)
+            svgImageTarget.color = color;
 
         if (tmpTextTarget != null)
             tmpTextTarget.color = color;
@@ -62,6 +67,9 @@ public class PaletteColorBinder : MonoBehaviour
 
         if (TryGetComponent(out Image img))
             imageTarget = img;
+
+        if (TryGetComponent(out SVGImage svgImg))
+            svgImageTarget = svgImg;
 
         if (TryGetComponent(out TMP_Text text))
             tmpTextTarget = text;
